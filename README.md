@@ -421,23 +421,50 @@ De esta manera, el receptor puede reconstruir tanto el color como el contenido d
 
 ---
 
-# 📡 Diagrama general del sistema
+## Uso del transmisor
+
+El sistema utiliza un **Arduino Mega 2560** para controlar dos lámparas:
+
+- **Lámpara A → Pin D8:** representa el punto Morse (`·`).
+- **Lámpara B → Pin D9:** representa la raya Morse (`—`).
+- **A+B:** se utilizan para indicar el color y las señales de control.
+
+### Ingreso de la matriz
+
+La matriz se introduce fácilmente desde el **Monitor Serial**. Primero se indican el número de filas y columnas y después se escribe cada fila.
+
+Cada celda se representa como:
+
+| Código | Significado |
+|---|---|
+| `B` | Blanca sin letra |
+| `N` | Negra sin letra |
+| `BA` | Blanca con letra A |
+| `NG` | Negra con letra G |
+
+Por ejemplo, una matriz de 3×4:
 
 ```text
-              TRANSMISIÓN ÓPTICA
-                    ~60 m
+BA N B ND
+N BG N B
+BS N NA B
 
-┌─────────────────┐                       ┌─────────────────┐
-│      EMISOR     │                       │     RECEPTOR    │
-│                 │                       │                 │
-│     Arduino     │                       │                 │
-│        │        │                       │                 │
-│    ┌───┴───┐    │                       │                 │
-│    │       │    │                       │                 │
-│    ▼       ▼    │                       │                 │
-│  Lámpara  Lámpara│ ───────────────────► │                 │
-│     A       B   │                       │   Decodificación│
-│                 │                       │        │        │
-└─────────────────┘                       │        ▼        │
-                                          │ Matriz final   │
-                                          └─────────────────┘
+Después de ingresar la matriz, el Arduino la muestra en el Monitor Serial para verificarla. Al escribir S, comienza la transmisión.
+
+Funcionamiento del código
+
+El programa almacena la matriz separando color y letra. Luego recorre las celdas de izquierda a derecha y de arriba hacia abajo.
+
+Para cada celda:
+
+Espera el tiempo establecido.
+Transmite el color mediante destellos simultáneos de A+B.
+Si contiene una letra, envía el indicador A-B-A-B.
+Transmite la letra utilizando código Morse:
+A = punto (·)
+B = raya (—)
+Continúa con la siguiente celda.
+
+Al terminar cada fila se envían 6 destellos A+B como señal de cambio de fila. Finalmente, se envía la señal de fin de trama.
+
+De esta manera, el Arduino convierte automáticamente la matriz introducida por el usuario en una secuencia de señales ópticas que puede ser interpretada por el receptor.
