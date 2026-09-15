@@ -444,7 +444,6 @@ Cada celda se representa como:
 
 Por ejemplo, una matriz de 3×4:
 
-```text
 BA N B ND
 N BG N B
 BS N NA B
