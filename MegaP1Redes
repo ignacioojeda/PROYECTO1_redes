@@ -14,7 +14,7 @@
       A-B-A-B rápidamente
 
    INICIO / FIN DE TRAMA:
-      A+B encendidas durante 5 segundos
+      A+B encendidas durante 4 segundos
 
    FIN DE FILA:
       A+B, 6 destellos
@@ -52,25 +52,28 @@
 // TIEMPOS DEL PROTOCOLO
 // ================================================================
 
-const unsigned long TIEMPO_INICIO_FIN = 5000;
+const unsigned long TIEMPO_INICIO_FIN = 4000;
 
-const unsigned long ESPERA_ANTES_CELDA = 3000;
+const unsigned long ESPERA_ANTES_CELDA = 1000;
 
-const unsigned long COLOR_ON  = 700;
-const unsigned long COLOR_OFF = 500;
+const unsigned long COLOR_ON  = 300;
+const unsigned long COLOR_OFF = 200;
 
-const unsigned long INDICADOR_ON  = 400;
-const unsigned long INDICADOR_OFF = 400;
+const unsigned long INDICADOR_ON  = 200;
+const unsigned long INDICADOR_OFF = 200;
 
-const unsigned long SEPARACION_COLOR_LETRA = 2000;
+const unsigned long SEPARACION_COLOR_LETRA = 500;
 
-const unsigned long MORSE_ON  = 700;
-const unsigned long MORSE_OFF = 500;
+const unsigned long MORSE_ON  = 300;
+const unsigned long MORSE_OFF = 200;
 
-const unsigned long SEPARACION_CELDA = 2000;
+const unsigned long SEPARACION_CELDA = 500;
 
-const unsigned long FILA_ON  = 400;
-const unsigned long FILA_OFF = 400;
+// NUEVO: espera adicional antes del cambio de fila
+const unsigned long ESPERA_ANTES_CAMBIO_FILA = 1000;
+
+const unsigned long FILA_ON  = 200;
+const unsigned long FILA_OFF = 200;
 
 // ================================================================
 // MATRIZ
@@ -105,7 +108,7 @@ const char morse[][5] PROGMEM = {
   "-.-",   // K
   ".-..",  // L
   "--",    // M
-  "-.",    // N
+  "-.",     // N
   "---",   // O
   ".--.",  // P
   "--.-",  // Q
@@ -131,6 +134,7 @@ char buffer[100];
 // ================================================================
 
 void apagarLamparas() {
+
   digitalWrite(LAMP_A, LOW);
   digitalWrite(LAMP_B, LOW);
 }
@@ -140,6 +144,7 @@ void apagarLamparas() {
 // ================================================================
 
 void encenderA(unsigned long tiempo) {
+
   digitalWrite(LAMP_A, HIGH);
   digitalWrite(LAMP_B, LOW);
 
@@ -153,6 +158,7 @@ void encenderA(unsigned long tiempo) {
 // ================================================================
 
 void encenderB(unsigned long tiempo) {
+
   digitalWrite(LAMP_A, LOW);
   digitalWrite(LAMP_B, HIGH);
 
@@ -166,6 +172,7 @@ void encenderB(unsigned long tiempo) {
 // ================================================================
 
 void encenderAB(unsigned long tiempo) {
+
   digitalWrite(LAMP_A, HIGH);
   digitalWrite(LAMP_B, HIGH);
 
@@ -199,6 +206,7 @@ void leerLinea(char *destino, int maxCaracteres) {
       }
 
       if (indice < maxCaracteres - 1) {
+
         destino[indice] = c;
         indice++;
       }
@@ -236,7 +244,9 @@ void mostrarMatriz() {
 
       if (color[i][j] == 0) {
         Serial.print(F("B"));
-      } else {
+      }
+
+      else {
         Serial.print(F("N"));
       }
 
@@ -255,10 +265,6 @@ void mostrarMatriz() {
 
 // ================================================================
 // PARSEAR UNA FILA
-//
-// Ejemplos:
-// BA N B ND
-// N BG N B
 // ================================================================
 
 bool parsearFila(byte fila) {
@@ -285,17 +291,16 @@ bool parsearFila(byte fila) {
 
         color[fila][columna] = 0;
         letras[fila][columna] = '\0';
-
       }
 
       else if (token[0] == 'N' || token[0] == 'n') {
 
         color[fila][columna] = 1;
         letras[fila][columna] = '\0';
-
       }
 
       else {
+
         return false;
       }
     }
@@ -306,33 +311,30 @@ bool parsearFila(byte fila) {
 
     else if (longitud == 2) {
 
-      // Color
-
       if (token[0] == 'B' || token[0] == 'b') {
 
         color[fila][columna] = 0;
-
       }
 
       else if (token[0] == 'N' || token[0] == 'n') {
 
         color[fila][columna] = 1;
-
       }
 
       else {
+
         return false;
       }
-
-      // Letra
 
       char letra = token[1];
 
       if (letra >= 'a' && letra <= 'z') {
+
         letra = letra - 'a' + 'A';
       }
 
       if (letra < 'A' || letra > 'Z') {
+
         return false;
       }
 
@@ -340,6 +342,7 @@ bool parsearFila(byte fila) {
     }
 
     else {
+
       return false;
     }
 
@@ -352,7 +355,7 @@ bool parsearFila(byte fila) {
 }
 
 // ================================================================
-// MOSTRAR CÓMO INGRESAR LA MATRIZ
+// MOSTRAR INSTRUCCIONES
 // ================================================================
 
 void mostrarInstrucciones() {
@@ -393,9 +396,6 @@ void transmitirInicioFin() {
 
 // ================================================================
 // TRANSMITIR COLOR
-//
-// Blanco = 1 destello A+B
-// Negro  = 2 destellos A+B
 // ================================================================
 
 void transmitirColor(byte tipoColor) {
@@ -403,8 +403,12 @@ void transmitirColor(byte tipoColor) {
   byte numeroDestellos;
 
   if (tipoColor == 0) {
+
     numeroDestellos = 1;
-  } else {
+  }
+
+  else {
+
     numeroDestellos = 2;
   }
 
@@ -493,7 +497,6 @@ void transmitirMorse(char letra) {
 
       // Punto = lámpara A
       encenderA(MORSE_ON);
-
     }
 
     else if (codigo[i] == '-') {
@@ -504,6 +507,7 @@ void transmitirMorse(char letra) {
 
     // Separación entre símbolos
     if (codigo[i + 1] != '\0') {
+
       delay(MORSE_OFF);
     }
   }
@@ -522,8 +526,12 @@ void transmitirCelda(byte fila, byte columna) {
   Serial.print(F("] -> "));
 
   if (color[fila][columna] == 0) {
+
     Serial.print(F("BLANCA"));
-  } else {
+  }
+
+  else {
+
     Serial.print(F("NEGRA"));
   }
 
@@ -531,8 +539,9 @@ void transmitirCelda(byte fila, byte columna) {
 
     Serial.print(F(" con letra "));
     Serial.println(letras[fila][columna]);
+  }
 
-  } else {
+  else {
 
     Serial.println(F(" sin letra"));
   }
@@ -638,12 +647,15 @@ void transmitirMatriz() {
     }
 
     // ----------------------------------------------------------
-    // SALTO DE FILA
-    // No se coloca después de la última fila
+    // ESPERA ADICIONAL ANTES DEL CAMBIO DE FILA
     // ----------------------------------------------------------
 
     if (i < filas - 1) {
 
+      // Espera adicional de 1 segundo
+      delay(ESPERA_ANTES_CAMBIO_FILA);
+
+      // Señal de cambio de fila
       transmitirSaltoFila();
     }
   }
@@ -760,6 +772,7 @@ void loop() {
 
     // Convertir a mayúscula
     if (respuesta >= 'a' && respuesta <= 'z') {
+
       respuesta = respuesta - 'a' + 'A';
     }
 
