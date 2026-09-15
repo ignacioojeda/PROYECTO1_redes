@@ -1,0 +1,783 @@
+/*
+   ================================================================
+   TRANSMISOR ÓPTICO - MATRIZ DE CELDAS
+   Arduino Mega 2560
+
+   LÁMPARA A = Punto Morse (.)
+   LÁMPARA B = Raya Morse (-)
+
+   COLOR:
+      Blanco = A+B, 1 destello
+      Negro  = A+B, 2 destellos
+
+   PRESENCIA DE LETRA:
+      A-B-A-B rápidamente
+
+   INICIO / FIN DE TRAMA:
+      A+B encendidas durante 5 segundos
+
+   FIN DE FILA:
+      A+B, 6 destellos
+
+   FORMATO PARA INGRESAR UNA CELDA:
+
+      B   = Blanca sin letra
+      N   = Negra sin letra
+      BA  = Blanca con letra A
+      NG  = Negra con letra G
+
+   Ejemplo:
+
+      BA N B ND
+      N BG N B
+      BS N NA B
+
+   ================================================================
+*/
+
+#include <Arduino.h>
+#include <avr/pgmspace.h>
+
+// ================================================================
+// CONFIGURACIÓN
+// ================================================================
+
+#define LAMP_A 8
+#define LAMP_B 9
+
+#define MAX_FILAS 10
+#define MAX_COLUMNAS 10
+
+// ================================================================
+// TIEMPOS DEL PROTOCOLO
+// ================================================================
+
+const unsigned long TIEMPO_INICIO_FIN = 5000;
+
+const unsigned long ESPERA_ANTES_CELDA = 3000;
+
+const unsigned long COLOR_ON  = 700;
+const unsigned long COLOR_OFF = 500;
+
+const unsigned long INDICADOR_ON  = 400;
+const unsigned long INDICADOR_OFF = 400;
+
+const unsigned long SEPARACION_COLOR_LETRA = 2000;
+
+const unsigned long MORSE_ON  = 700;
+const unsigned long MORSE_OFF = 500;
+
+const unsigned long SEPARACION_CELDA = 2000;
+
+const unsigned long FILA_ON  = 400;
+const unsigned long FILA_OFF = 400;
+
+// ================================================================
+// MATRIZ
+// ================================================================
+
+// 0 = blanco
+// 1 = negro
+byte color[MAX_FILAS][MAX_COLUMNAS];
+
+// '\0' = no hay letra
+// 'A'...'Z' = letra
+char letras[MAX_FILAS][MAX_COLUMNAS];
+
+byte filas;
+byte columnas;
+
+// ================================================================
+// TABLA MORSE
+// ================================================================
+
+const char morse[][5] PROGMEM = {
+  ".-",    // A
+  "-...",  // B
+  "-.-.",  // C
+  "-..",   // D
+  ".",     // E
+  "..-.",  // F
+  "--.",   // G
+  "....",  // H
+  "..",    // I
+  ".---",  // J
+  "-.-",   // K
+  ".-..",  // L
+  "--",    // M
+  "-.",    // N
+  "---",   // O
+  ".--.",  // P
+  "--.-",  // Q
+  ".-.",   // R
+  "...",   // S
+  "-",     // T
+  "..-",   // U
+  "...-",  // V
+  ".--",   // W
+  "-..-",  // X
+  "-.--",  // Y
+  "--.."   // Z
+};
+
+// ================================================================
+// BUFFER PARA LEER EL MONITOR SERIAL
+// ================================================================
+
+char buffer[100];
+
+// ================================================================
+// APAGAR LAS DOS LÁMPARAS
+// ================================================================
+
+void apagarLamparas() {
+  digitalWrite(LAMP_A, LOW);
+  digitalWrite(LAMP_B, LOW);
+}
+
+// ================================================================
+// ENCENDER A
+// ================================================================
+
+void encenderA(unsigned long tiempo) {
+  digitalWrite(LAMP_A, HIGH);
+  digitalWrite(LAMP_B, LOW);
+
+  delay(tiempo);
+
+  digitalWrite(LAMP_A, LOW);
+}
+
+// ================================================================
+// ENCENDER B
+// ================================================================
+
+void encenderB(unsigned long tiempo) {
+  digitalWrite(LAMP_A, LOW);
+  digitalWrite(LAMP_B, HIGH);
+
+  delay(tiempo);
+
+  digitalWrite(LAMP_B, LOW);
+}
+
+// ================================================================
+// ENCENDER A+B
+// ================================================================
+
+void encenderAB(unsigned long tiempo) {
+  digitalWrite(LAMP_A, HIGH);
+  digitalWrite(LAMP_B, HIGH);
+
+  delay(tiempo);
+
+  apagarLamparas();
+}
+
+// ================================================================
+// LEER UNA LÍNEA DEL MONITOR SERIAL
+// ================================================================
+
+void leerLinea(char *destino, int maxCaracteres) {
+
+  int indice = 0;
+
+  while (true) {
+
+    if (Serial.available()) {
+
+      char c = Serial.read();
+
+      // Fin de línea
+      if (c == '\n') {
+        break;
+      }
+
+      // Ignorar retorno de carro
+      if (c == '\r') {
+        continue;
+      }
+
+      if (indice < maxCaracteres - 1) {
+        destino[indice] = c;
+        indice++;
+      }
+    }
+  }
+
+  destino[indice] = '\0';
+}
+
+// ================================================================
+// LEER UN NÚMERO
+// ================================================================
+
+int leerNumero() {
+
+  leerLinea(buffer, sizeof(buffer));
+
+  return atoi(buffer);
+}
+
+// ================================================================
+// MOSTRAR MATRIZ
+// ================================================================
+
+void mostrarMatriz() {
+
+  Serial.println();
+  Serial.println(F("================================"));
+  Serial.println(F(" MATRIZ INGRESADA"));
+  Serial.println(F("================================"));
+
+  for (byte i = 0; i < filas; i++) {
+
+    for (byte j = 0; j < columnas; j++) {
+
+      if (color[i][j] == 0) {
+        Serial.print(F("B"));
+      } else {
+        Serial.print(F("N"));
+      }
+
+      if (letras[i][j] != '\0') {
+        Serial.print(letras[i][j]);
+      }
+
+      Serial.print(F(" "));
+    }
+
+    Serial.println();
+  }
+
+  Serial.println(F("================================"));
+}
+
+// ================================================================
+// PARSEAR UNA FILA
+//
+// Ejemplos:
+// BA N B ND
+// N BG N B
+// ================================================================
+
+bool parsearFila(byte fila) {
+
+  byte columna = 0;
+
+  char *token = strtok(buffer, " ");
+
+  while (token != NULL) {
+
+    if (columna >= columnas) {
+      return false;
+    }
+
+    int longitud = strlen(token);
+
+    // ------------------------------------------------------------
+    // CELDA SIN LETRA
+    // ------------------------------------------------------------
+
+    if (longitud == 1) {
+
+      if (token[0] == 'B' || token[0] == 'b') {
+
+        color[fila][columna] = 0;
+        letras[fila][columna] = '\0';
+
+      }
+
+      else if (token[0] == 'N' || token[0] == 'n') {
+
+        color[fila][columna] = 1;
+        letras[fila][columna] = '\0';
+
+      }
+
+      else {
+        return false;
+      }
+    }
+
+    // ------------------------------------------------------------
+    // CELDA CON LETRA
+    // ------------------------------------------------------------
+
+    else if (longitud == 2) {
+
+      // Color
+
+      if (token[0] == 'B' || token[0] == 'b') {
+
+        color[fila][columna] = 0;
+
+      }
+
+      else if (token[0] == 'N' || token[0] == 'n') {
+
+        color[fila][columna] = 1;
+
+      }
+
+      else {
+        return false;
+      }
+
+      // Letra
+
+      char letra = token[1];
+
+      if (letra >= 'a' && letra <= 'z') {
+        letra = letra - 'a' + 'A';
+      }
+
+      if (letra < 'A' || letra > 'Z') {
+        return false;
+      }
+
+      letras[fila][columna] = letra;
+    }
+
+    else {
+      return false;
+    }
+
+    columna++;
+
+    token = strtok(NULL, " ");
+  }
+
+  return columna == columnas;
+}
+
+// ================================================================
+// MOSTRAR CÓMO INGRESAR LA MATRIZ
+// ================================================================
+
+void mostrarInstrucciones() {
+
+  Serial.println();
+  Serial.println(F("=============================================="));
+  Serial.println(F("     TRANSMISOR OPTICO - ARDUINO MEGA"));
+  Serial.println(F("=============================================="));
+
+  Serial.println();
+  Serial.println(F("FORMATO DE CELDAS:"));
+
+  Serial.println(F("B  = Blanca sin letra"));
+  Serial.println(F("N  = Negra sin letra"));
+  Serial.println(F("BA = Blanca con letra A"));
+  Serial.println(F("NG = Negra con letra G"));
+
+  Serial.println();
+  Serial.println(F("Ejemplo de una matriz 3x4:"));
+
+  Serial.println(F("BA N B ND"));
+  Serial.println(F("N BG N B"));
+  Serial.println(F("BS N NA B"));
+
+  Serial.println();
+}
+
+// ================================================================
+// TRANSMITIR INICIO / FIN DE TRAMA
+// ================================================================
+
+void transmitirInicioFin() {
+
+  Serial.println(F("A+B -> INICIO/FIN DE TRAMA"));
+
+  encenderAB(TIEMPO_INICIO_FIN);
+}
+
+// ================================================================
+// TRANSMITIR COLOR
+//
+// Blanco = 1 destello A+B
+// Negro  = 2 destellos A+B
+// ================================================================
+
+void transmitirColor(byte tipoColor) {
+
+  byte numeroDestellos;
+
+  if (tipoColor == 0) {
+    numeroDestellos = 1;
+  } else {
+    numeroDestellos = 2;
+  }
+
+  for (byte i = 0; i < numeroDestellos; i++) {
+
+    digitalWrite(LAMP_A, HIGH);
+    digitalWrite(LAMP_B, HIGH);
+
+    delay(COLOR_ON);
+
+    apagarLamparas();
+
+    delay(COLOR_OFF);
+  }
+}
+
+// ================================================================
+// TRANSMITIR INDICADOR DE LETRA
+//
+// A-B-A-B
+// ================================================================
+
+void transmitirIndicadorLetra() {
+
+  // A
+  digitalWrite(LAMP_A, HIGH);
+  digitalWrite(LAMP_B, LOW);
+  delay(INDICADOR_ON);
+  apagarLamparas();
+  delay(INDICADOR_OFF);
+
+  // B
+  digitalWrite(LAMP_A, LOW);
+  digitalWrite(LAMP_B, HIGH);
+  delay(INDICADOR_ON);
+  apagarLamparas();
+  delay(INDICADOR_OFF);
+
+  // A
+  digitalWrite(LAMP_A, HIGH);
+  digitalWrite(LAMP_B, LOW);
+  delay(INDICADOR_ON);
+  apagarLamparas();
+  delay(INDICADOR_OFF);
+
+  // B
+  digitalWrite(LAMP_A, LOW);
+  digitalWrite(LAMP_B, HIGH);
+  delay(INDICADOR_ON);
+  apagarLamparas();
+}
+
+// ================================================================
+// TRANSMITIR UNA LETRA EN MORSE
+// ================================================================
+
+void transmitirMorse(char letra) {
+
+  if (letra < 'A' || letra > 'Z') {
+    return;
+  }
+
+  byte indice = letra - 'A';
+
+  char codigo[5];
+
+  // Leer código Morse desde memoria Flash
+  for (byte i = 0; i < 5; i++) {
+
+    codigo[i] = pgm_read_byte(&(morse[indice][i]));
+
+    if (codigo[i] == '\0') {
+      break;
+    }
+  }
+
+  Serial.print(F("Morse de "));
+  Serial.print(letra);
+  Serial.print(F(": "));
+  Serial.println(codigo);
+
+  // Transmitir cada símbolo
+  for (byte i = 0; codigo[i] != '\0'; i++) {
+
+    if (codigo[i] == '.') {
+
+      // Punto = lámpara A
+      encenderA(MORSE_ON);
+
+    }
+
+    else if (codigo[i] == '-') {
+
+      // Raya = lámpara B
+      encenderB(MORSE_ON);
+    }
+
+    // Separación entre símbolos
+    if (codigo[i + 1] != '\0') {
+      delay(MORSE_OFF);
+    }
+  }
+}
+
+// ================================================================
+// TRANSMITIR UNA CELDA
+// ================================================================
+
+void transmitirCelda(byte fila, byte columna) {
+
+  Serial.print(F("Celda ["));
+  Serial.print(fila + 1);
+  Serial.print(F(","));
+  Serial.print(columna + 1);
+  Serial.print(F("] -> "));
+
+  if (color[fila][columna] == 0) {
+    Serial.print(F("BLANCA"));
+  } else {
+    Serial.print(F("NEGRA"));
+  }
+
+  if (letras[fila][columna] != '\0') {
+
+    Serial.print(F(" con letra "));
+    Serial.println(letras[fila][columna]);
+
+  } else {
+
+    Serial.println(F(" sin letra"));
+  }
+
+  // ------------------------------------------------------------
+  // Espera antes de cada celda
+  // ------------------------------------------------------------
+
+  apagarLamparas();
+
+  delay(ESPERA_ANTES_CELDA);
+
+  // ------------------------------------------------------------
+  // COLOR
+  // ------------------------------------------------------------
+
+  transmitirColor(color[fila][columna]);
+
+  // ------------------------------------------------------------
+  // SI TIENE LETRA
+  // ------------------------------------------------------------
+
+  if (letras[fila][columna] != '\0') {
+
+    // Separación entre color e indicador
+    delay(SEPARACION_COLOR_LETRA);
+
+    // Indicador A-B-A-B
+    transmitirIndicadorLetra();
+
+    // Separación antes del Morse
+    delay(SEPARACION_COLOR_LETRA);
+
+    // Morse
+    transmitirMorse(letras[fila][columna]);
+  }
+
+  // ------------------------------------------------------------
+  // Separación entre celdas
+  // ------------------------------------------------------------
+
+  apagarLamparas();
+
+  delay(SEPARACION_CELDA);
+}
+
+// ================================================================
+// TRANSMITIR SALTO DE FILA
+//
+// A+B = 6 destellos
+// ================================================================
+
+void transmitirSaltoFila() {
+
+  Serial.println(F("A+B -> SALTO DE FILA"));
+
+  for (byte i = 0; i < 6; i++) {
+
+    digitalWrite(LAMP_A, HIGH);
+    digitalWrite(LAMP_B, HIGH);
+
+    delay(FILA_ON);
+
+    apagarLamparas();
+
+    delay(FILA_OFF);
+  }
+}
+
+// ================================================================
+// TRANSMITIR MATRIZ COMPLETA
+// ================================================================
+
+void transmitirMatriz() {
+
+  Serial.println();
+  Serial.println(F("=============================================="));
+  Serial.println(F("         INICIANDO TRANSMISION"));
+  Serial.println(F("=============================================="));
+
+  apagarLamparas();
+
+  // ------------------------------------------------------------
+  // INICIO DE TRAMA
+  // ------------------------------------------------------------
+
+  transmitirInicioFin();
+
+  // ------------------------------------------------------------
+  // RECORRER FILAS
+  // ------------------------------------------------------------
+
+  for (byte i = 0; i < filas; i++) {
+
+    Serial.println();
+    Serial.print(F("******** FILA "));
+    Serial.print(i + 1);
+    Serial.println(F(" ********"));
+
+    for (byte j = 0; j < columnas; j++) {
+
+      transmitirCelda(i, j);
+    }
+
+    // ----------------------------------------------------------
+    // SALTO DE FILA
+    // No se coloca después de la última fila
+    // ----------------------------------------------------------
+
+    if (i < filas - 1) {
+
+      transmitirSaltoFila();
+    }
+  }
+
+  // ------------------------------------------------------------
+  // FIN DE TRAMA
+  // ------------------------------------------------------------
+
+  transmitirInicioFin();
+
+  apagarLamparas();
+
+  Serial.println();
+  Serial.println(F("=============================================="));
+  Serial.println(F("       TRANSMISION TERMINADA"));
+  Serial.println(F("=============================================="));
+}
+
+// ================================================================
+// SETUP
+// ================================================================
+
+void setup() {
+
+  pinMode(LAMP_A, OUTPUT);
+  pinMode(LAMP_B, OUTPUT);
+
+  apagarLamparas();
+
+  Serial.begin(9600);
+
+  delay(1000);
+
+  mostrarInstrucciones();
+
+  Serial.println(F("Ingrese numero de FILAS:"));
+
+  filas = leerNumero();
+
+  if (filas < 1 || filas > MAX_FILAS) {
+
+    Serial.println(F("ERROR: numero de filas invalido."));
+
+    while (true);
+  }
+
+  Serial.print(F("Filas = "));
+  Serial.println(filas);
+
+  Serial.println(F("Ingrese numero de COLUMNAS:"));
+
+  columnas = leerNumero();
+
+  if (columnas < 1 || columnas > MAX_COLUMNAS) {
+
+    Serial.println(F("ERROR: numero de columnas invalido."));
+
+    while (true);
+  }
+
+  Serial.print(F("Columnas = "));
+  Serial.println(columnas);
+
+  // ------------------------------------------------------------
+  // INGRESAR CADA FILA
+  // ------------------------------------------------------------
+
+  for (byte i = 0; i < filas; i++) {
+
+    bool filaCorrecta = false;
+
+    while (!filaCorrecta) {
+
+      Serial.println();
+      Serial.print(F("Ingrese fila "));
+      Serial.print(i + 1);
+      Serial.print(F(" ("));
+      Serial.print(columnas);
+      Serial.println(F(" celdas):"));
+
+      leerLinea(buffer, sizeof(buffer));
+
+      filaCorrecta = parsearFila(i);
+
+      if (!filaCorrecta) {
+
+        Serial.println(F("ERROR en la fila."));
+        Serial.println(F("Ejemplo: BA N B ND"));
+        Serial.println(F("Intente nuevamente."));
+      }
+    }
+  }
+
+  // ------------------------------------------------------------
+  // MOSTRAR MATRIZ
+  // ------------------------------------------------------------
+
+  mostrarMatriz();
+
+  Serial.println();
+  Serial.println(F("Escriba S para transmitir."));
+  Serial.println(F("Escriba N para cancelar."));
+}
+
+// ================================================================
+// LOOP
+// ================================================================
+
+void loop() {
+
+  if (Serial.available()) {
+
+    char respuesta = Serial.read();
+
+    // Convertir a mayúscula
+    if (respuesta >= 'a' && respuesta <= 'z') {
+      respuesta = respuesta - 'a' + 'A';
+    }
+
+    if (respuesta == 'S') {
+
+      transmitirMatriz();
+
+      Serial.println();
+      Serial.println(F("Presione S para volver a transmitir."));
+      Serial.println(F("Presione N para detener."));
+    }
+
+    else if (respuesta == 'N') {
+
+      apagarLamparas();
+
+      Serial.println();
+      Serial.println(F("Transmision detenida."));
+    }
+  }
+}
