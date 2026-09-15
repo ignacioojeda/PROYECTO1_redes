@@ -430,11 +430,11 @@ De esta manera, el receptor puede reconstruir tanto el color como el contenido d
 ┌─────────────────┐                       ┌─────────────────┐
 │      EMISOR     │                       │     RECEPTOR    │
 │                 │                       │                 │
-│     Arduino     │                       │     Arduino     │
-│        │        │                       │        ▲        │
-│    ┌───┴───┐    │                       │        │        │
-│    │       │    │                       │   Sensores /   │
-│    ▼       ▼    │                       │    recepción    │
+│     Arduino     │                       │                 │
+│        │        │                       │                 │
+│    ┌───┴───┐    │                       │                 │
+│    │       │    │                       │                 │
+│    ▼       ▼    │                       │                 │
 │  Lámpara  Lámpara│ ───────────────────► │                 │
 │     A       B   │                       │   Decodificación│
 │                 │                       │        │        │
