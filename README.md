@@ -443,10 +443,12 @@ Cada celda se representa como:
 | `NG` | Negra con letra G |
 
 Por ejemplo, una matriz de 3×4:
-
+```text
 BA N B ND
 N BG N B
 BS N NA B
+
+
 
 Después de ingresar la matriz, el Arduino la muestra en el Monitor Serial para verificarla. Al escribir S, comienza la transmisión.
 
