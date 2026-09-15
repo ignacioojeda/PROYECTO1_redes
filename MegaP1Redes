@@ -3,44 +3,38 @@
    TRANSMISOR ÓPTICO - MATRIZ DE CELDAS
    Arduino Mega 2560
 
+   Este programa implementa el transmisor de un sistema de
+   comunicación óptica mediante dos lámparas.
+
+   La información de una matriz se convierte en señales luminosas
+   que posteriormente pueden ser interpretadas por el receptor.
+
    LÁMPARA A = Punto Morse (.)
    LÁMPARA B = Raya Morse (-)
 
-   COLOR:
-      Blanco = A+B, 1 destello
-      Negro  = A+B, 2 destellos
+   El protocolo permite transmitir:
 
-   PRESENCIA DE LETRA:
-      A-B-A-B rápidamente
-
-   INICIO / FIN DE TRAMA:
-      A+B encendidas durante 4 segundos
-
-   FIN DE FILA:
-      A+B, 6 destellos
-
-   FORMATO PARA INGRESAR UNA CELDA:
-
-      B   = Blanca sin letra
-      N   = Negra sin letra
-      BA  = Blanca con letra A
-      NG  = Negra con letra G
-
-   Ejemplo:
-
-      BA N B ND
-      N BG N B
-      BS N NA B
+   - Color de cada celda.
+   - Presencia o ausencia de una letra.
+   - Letra mediante código Morse.
+   - Separación entre filas.
+   - Inicio y final de la transmisión.
 
    ================================================================
 */
 
+
 #include <Arduino.h>
 #include <avr/pgmspace.h>
 
-// ================================================================
-// CONFIGURACIÓN
-// ================================================================
+
+// =================================================================
+// CONFIGURACIÓN GENERAL
+// =================================================================
+//
+// Se definen los pines utilizados para las dos lámparas y los
+// límites máximos de la matriz.
+// =================================================================
 
 #define LAMP_A 8
 #define LAMP_B 9
@@ -48,9 +42,16 @@
 #define MAX_FILAS 10
 #define MAX_COLUMNAS 10
 
-// ================================================================
+
+// =================================================================
 // TIEMPOS DEL PROTOCOLO
-// ================================================================
+// =================================================================
+//
+// En esta sección se establecen todas las duraciones utilizadas
+// durante la transmisión.
+//
+// Los tiempos están expresados en milisegundos.
+// =================================================================
 
 const unsigned long TIEMPO_INICIO_FIN = 4000;
 
@@ -69,32 +70,56 @@ const unsigned long MORSE_OFF = 200;
 
 const unsigned long SEPARACION_CELDA = 500;
 
-// NUEVO: espera adicional antes del cambio de fila
 const unsigned long ESPERA_ANTES_CAMBIO_FILA = 1000;
 
 const unsigned long FILA_ON  = 200;
 const unsigned long FILA_OFF = 200;
 
-// ================================================================
-// MATRIZ
-// ================================================================
+
+// =================================================================
+// ALMACENAMIENTO DE LA MATRIZ
+// =================================================================
+//
+// La información de cada celda se almacena en dos matrices:
+//
+// color[][]  → almacena blanco o negro.
+// letras[][] → almacena la letra o indica que no existe.
+//
+// Esto permite manejar el color y la letra como información
+// independiente.
+// =================================================================
 
 // 0 = blanco
 // 1 = negro
 byte color[MAX_FILAS][MAX_COLUMNAS];
 
-// '\0' = no hay letra
-// 'A'...'Z' = letra
+// '\0' = sin letra
+// 'A'...'Z' = letra presente
 char letras[MAX_FILAS][MAX_COLUMNAS];
 
+
+// Número de filas y columnas ingresadas por el usuario.
 byte filas;
 byte columnas;
 
-// ================================================================
-// TABLA MORSE
-// ================================================================
+
+// =================================================================
+// TABLA DE CÓDIGO MORSE
+// =================================================================
+//
+// Contiene el código Morse correspondiente a las letras A-Z.
+//
+// En el protocolo:
+//
+// A → punto (.)
+// B → raya (-)
+//
+// La tabla se almacena en memoria Flash mediante PROGMEM para
+// reducir el consumo de memoria RAM.
+// =================================================================
 
 const char morse[][5] PROGMEM = {
+
   ".-",    // A
   "-...",  // B
   "-.-.",  // C
@@ -123,26 +148,40 @@ const char morse[][5] PROGMEM = {
   "--.."   // Z
 };
 
-// ================================================================
-// BUFFER PARA LEER EL MONITOR SERIAL
-// ================================================================
+
+// =================================================================
+// BUFFER DE ENTRADA
+// =================================================================
+//
+// Se utiliza para recibir temporalmente la información enviada
+// desde el Monitor Serial.
+// =================================================================
 
 char buffer[100];
 
-// ================================================================
-// APAGAR LAS DOS LÁMPARAS
-// ================================================================
 
+// =================================================================
+// CONTROL BÁSICO DE LAS LÁMPARAS
+// =================================================================
+//
+// Estas funciones permiten controlar individualmente las lámparas
+// A y B o encenderlas simultáneamente.
+//
+// Se utilizan como bloques básicos para construir las diferentes
+// señales del protocolo.
+// =================================================================
+
+// Apaga ambas lámparas.
 void apagarLamparas() {
 
   digitalWrite(LAMP_A, LOW);
   digitalWrite(LAMP_B, LOW);
 }
 
-// ================================================================
-// ENCENDER A
-// ================================================================
 
+// Enciende únicamente la lámpara A durante el tiempo indicado.
+//
+// A representa un punto Morse (.).
 void encenderA(unsigned long tiempo) {
 
   digitalWrite(LAMP_A, HIGH);
@@ -153,10 +192,10 @@ void encenderA(unsigned long tiempo) {
   digitalWrite(LAMP_A, LOW);
 }
 
-// ================================================================
-// ENCENDER B
-// ================================================================
 
+// Enciende únicamente la lámpara B durante el tiempo indicado.
+//
+// B representa una raya Morse (-).
 void encenderB(unsigned long tiempo) {
 
   digitalWrite(LAMP_A, LOW);
@@ -167,10 +206,11 @@ void encenderB(unsigned long tiempo) {
   digitalWrite(LAMP_B, LOW);
 }
 
-// ================================================================
-// ENCENDER A+B
-// ================================================================
 
+// Enciende simultáneamente A y B durante el tiempo indicado.
+//
+// Esta combinación se utiliza para las señales de control:
+// color, inicio/fin y cambio de fila.
 void encenderAB(unsigned long tiempo) {
 
   digitalWrite(LAMP_A, HIGH);
@@ -181,9 +221,17 @@ void encenderAB(unsigned long tiempo) {
   apagarLamparas();
 }
 
-// ================================================================
-// LEER UNA LÍNEA DEL MONITOR SERIAL
-// ================================================================
+
+// =================================================================
+// ENTRADA DE DATOS DESDE EL MONITOR SERIAL
+// =================================================================
+//
+// El usuario introduce primero el tamaño de la matriz y luego
+// cada una de sus filas.
+//
+// leerLinea() recibe una línea completa.
+// leerNumero() convierte una línea recibida en un número entero.
+// =================================================================
 
 void leerLinea(char *destino, int maxCaracteres) {
 
@@ -195,16 +243,17 @@ void leerLinea(char *destino, int maxCaracteres) {
 
       char c = Serial.read();
 
-      // Fin de línea
+      // Detecta el final de la línea.
       if (c == '\n') {
         break;
       }
 
-      // Ignorar retorno de carro
+      // Ignora el retorno de carro.
       if (c == '\r') {
         continue;
       }
 
+      // Guarda el carácter recibido en el buffer.
       if (indice < maxCaracteres - 1) {
 
         destino[indice] = c;
@@ -213,13 +262,12 @@ void leerLinea(char *destino, int maxCaracteres) {
     }
   }
 
+  // Final de la cadena.
   destino[indice] = '\0';
 }
 
-// ================================================================
-// LEER UN NÚMERO
-// ================================================================
 
+// Lee un número introducido desde el Monitor Serial.
 int leerNumero() {
 
   leerLinea(buffer, sizeof(buffer));
@@ -227,9 +275,16 @@ int leerNumero() {
   return atoi(buffer);
 }
 
-// ================================================================
-// MOSTRAR MATRIZ
-// ================================================================
+
+// =================================================================
+// VISUALIZACIÓN DE LA MATRIZ
+// =================================================================
+//
+// Muestra en el Monitor Serial la matriz almacenada.
+//
+// Permite comprobar que los datos introducidos por el usuario
+// fueron interpretados correctamente antes de transmitirlos.
+// =================================================================
 
 void mostrarMatriz() {
 
@@ -242,14 +297,15 @@ void mostrarMatriz() {
 
     for (byte j = 0; j < columnas; j++) {
 
+      // Mostrar el color.
       if (color[i][j] == 0) {
         Serial.print(F("B"));
       }
-
       else {
         Serial.print(F("N"));
       }
 
+      // Mostrar la letra si existe.
       if (letras[i][j] != '\0') {
         Serial.print(letras[i][j]);
       }
@@ -263,54 +319,84 @@ void mostrarMatriz() {
   Serial.println(F("================================"));
 }
 
-// ================================================================
-// PARSEAR UNA FILA
-// ================================================================
+
+// =================================================================
+// PROCESAMIENTO DE LAS FILAS
+// =================================================================
+//
+// parsearFila() interpreta la información introducida por el
+// usuario y la almacena en las matrices color[][] y letras[][].
+//
+// Formatos válidos:
+//
+// B  → blanca sin letra
+// N  → negra sin letra
+// BA → blanca con letra A
+// NG → negra con letra G
+// =================================================================
 
 bool parsearFila(byte fila) {
 
   byte columna = 0;
 
+  // Divide la línea utilizando los espacios como separadores.
   char *token = strtok(buffer, " ");
 
   while (token != NULL) {
 
+    // Verifica que no se supere el número de columnas.
     if (columna >= columnas) {
       return false;
     }
 
     int longitud = strlen(token);
 
+
     // ------------------------------------------------------------
     // CELDA SIN LETRA
+    // ------------------------------------------------------------
+    //
+    // Una celda de un carácter solamente contiene información
+    // sobre su color.
     // ------------------------------------------------------------
 
     if (longitud == 1) {
 
+      // B representa blanco.
       if (token[0] == 'B' || token[0] == 'b') {
 
         color[fila][columna] = 0;
         letras[fila][columna] = '\0';
       }
 
+      // N representa negro.
       else if (token[0] == 'N' || token[0] == 'n') {
 
         color[fila][columna] = 1;
         letras[fila][columna] = '\0';
       }
 
+      // Cualquier otro carácter es inválido.
       else {
 
         return false;
       }
     }
 
+
     // ------------------------------------------------------------
     // CELDA CON LETRA
+    // ------------------------------------------------------------
+    //
+    // Una celda de dos caracteres contiene:
+    //
+    // Primer carácter → color.
+    // Segundo carácter → letra.
     // ------------------------------------------------------------
 
     else if (longitud == 2) {
 
+      // Determinar el color.
       if (token[0] == 'B' || token[0] == 'b') {
 
         color[fila][columna] = 0;
@@ -326,18 +412,26 @@ bool parsearFila(byte fila) {
         return false;
       }
 
+
+      // Obtener la letra.
       char letra = token[1];
 
+
+      // Convertir letras minúsculas a mayúsculas.
       if (letra >= 'a' && letra <= 'z') {
 
         letra = letra - 'a' + 'A';
       }
 
+
+      // Verificar que sea una letra válida.
       if (letra < 'A' || letra > 'Z') {
 
         return false;
       }
 
+
+      // Guardar la letra.
       letras[fila][columna] = letra;
     }
 
@@ -346,17 +440,28 @@ bool parsearFila(byte fila) {
       return false;
     }
 
+
+    // Pasar a la siguiente columna.
     columna++;
 
+    // Obtener la siguiente celda.
     token = strtok(NULL, " ");
   }
 
+
+  // La fila es válida solamente si contiene exactamente
+  // el número de columnas esperado.
   return columna == columnas;
 }
 
-// ================================================================
-// MOSTRAR INSTRUCCIONES
-// ================================================================
+
+// =================================================================
+// INSTRUCCIONES PARA EL USUARIO
+// =================================================================
+//
+// Muestra en el Monitor Serial cómo introducir la matriz y cuáles
+// son los formatos disponibles.
+// =================================================================
 
 void mostrarInstrucciones() {
 
@@ -383,9 +488,16 @@ void mostrarInstrucciones() {
   Serial.println();
 }
 
-// ================================================================
-// TRANSMITIR INICIO / FIN DE TRAMA
-// ================================================================
+
+// =================================================================
+// TRANSMISIÓN DE INICIO Y FIN
+// =================================================================
+//
+// Las dos lámparas permanecen encendidas durante 4 segundos.
+//
+// La misma señal se utiliza para marcar el inicio y el final
+// de una trama completa.
+// =================================================================
 
 void transmitirInicioFin() {
 
@@ -394,9 +506,17 @@ void transmitirInicioFin() {
   encenderAB(TIEMPO_INICIO_FIN);
 }
 
-// ================================================================
-// TRANSMITIR COLOR
-// ================================================================
+
+// =================================================================
+// TRANSMISIÓN DEL COLOR
+// =================================================================
+//
+// El color se representa mediante el número de destellos de
+// A+B:
+//
+// 1 destello → blanco
+// 2 destellos → negro
+// =================================================================
 
 void transmitirColor(byte tipoColor) {
 
@@ -404,14 +524,18 @@ void transmitirColor(byte tipoColor) {
 
   if (tipoColor == 0) {
 
+    // Blanco.
     numeroDestellos = 1;
   }
 
   else {
 
+    // Negro.
     numeroDestellos = 2;
   }
 
+
+  // Generar los destellos correspondientes.
   for (byte i = 0; i < numeroDestellos; i++) {
 
     digitalWrite(LAMP_A, HIGH);
@@ -425,57 +549,85 @@ void transmitirColor(byte tipoColor) {
   }
 }
 
-// ================================================================
-// TRANSMITIR INDICADOR DE LETRA
+
+// =================================================================
+// INDICADOR DE PRESENCIA DE LETRA
+// =================================================================
+//
+// Cuando una celda contiene una letra se transmite:
 //
 // A-B-A-B
-// ================================================================
+//
+// Esta secuencia permite al receptor saber que después del
+// indicador encontrará información Morse.
+// =================================================================
 
 void transmitirIndicadorLetra() {
 
-  // A
+  // Primer símbolo: A
   digitalWrite(LAMP_A, HIGH);
   digitalWrite(LAMP_B, LOW);
   delay(INDICADOR_ON);
   apagarLamparas();
   delay(INDICADOR_OFF);
 
-  // B
+  // Segundo símbolo: B
   digitalWrite(LAMP_A, LOW);
   digitalWrite(LAMP_B, HIGH);
   delay(INDICADOR_ON);
   apagarLamparas();
   delay(INDICADOR_OFF);
 
-  // A
+  // Tercer símbolo: A
   digitalWrite(LAMP_A, HIGH);
   digitalWrite(LAMP_B, LOW);
   delay(INDICADOR_ON);
   apagarLamparas();
   delay(INDICADOR_OFF);
 
-  // B
+  // Cuarto símbolo: B
   digitalWrite(LAMP_A, LOW);
   digitalWrite(LAMP_B, HIGH);
   delay(INDICADOR_ON);
   apagarLamparas();
 }
 
-// ================================================================
-// TRANSMITIR UNA LETRA EN MORSE
-// ================================================================
+
+// =================================================================
+// TRANSMISIÓN DE UNA LETRA EN MORSE
+// =================================================================
+//
+// Recibe una letra, busca su código Morse en la tabla y convierte
+// cada símbolo Morse en una señal óptica:
+//
+// '.' → lámpara A
+// '-' → lámpara B
+//
+// También se muestra el código Morse en el Monitor Serial.
+// =================================================================
 
 void transmitirMorse(char letra) {
 
+  // Verificar que la letra esté entre A y Z.
   if (letra < 'A' || letra > 'Z') {
     return;
   }
 
+
+  // Convertir la letra en un índice de la tabla Morse.
+  //
+  // A → 0
+  // B → 1
+  // ...
+  // Z → 25
   byte indice = letra - 'A';
 
+
+  // Espacio temporal para almacenar el código Morse.
   char codigo[5];
 
-  // Leer código Morse desde memoria Flash
+
+  // Leer el código Morse desde la memoria Flash.
   for (byte i = 0; i < 5; i++) {
 
     codigo[i] = pgm_read_byte(&(morse[indice][i]));
@@ -485,27 +637,31 @@ void transmitirMorse(char letra) {
     }
   }
 
+
+  // Mostrar la letra y su código Morse.
   Serial.print(F("Morse de "));
   Serial.print(letra);
   Serial.print(F(": "));
   Serial.println(codigo);
 
-  // Transmitir cada símbolo
+
+  // Transmitir cada símbolo.
   for (byte i = 0; codigo[i] != '\0'; i++) {
 
+    // Punto → lámpara A.
     if (codigo[i] == '.') {
 
-      // Punto = lámpara A
       encenderA(MORSE_ON);
     }
 
+    // Raya → lámpara B.
     else if (codigo[i] == '-') {
 
-      // Raya = lámpara B
       encenderB(MORSE_ON);
     }
 
-    // Separación entre símbolos
+
+    // Separación entre símbolos Morse.
     if (codigo[i + 1] != '\0') {
 
       delay(MORSE_OFF);
@@ -513,18 +669,35 @@ void transmitirMorse(char letra) {
   }
 }
 
-// ================================================================
-// TRANSMITIR UNA CELDA
-// ================================================================
+
+// =================================================================
+// TRANSMISIÓN DE UNA CELDA
+// =================================================================
+//
+// Esta función concentra toda la información que debe enviarse
+// para una celda.
+//
+// Secuencia:
+//
+// 1. Espera.
+// 2. Transmisión del color.
+// 3. Si existe letra:
+//       - Indicador A-B-A-B.
+//       - Código Morse.
+// 4. Separación antes de la siguiente celda.
+// =================================================================
 
 void transmitirCelda(byte fila, byte columna) {
 
+  // Mostrar información de la celda en el Monitor Serial.
   Serial.print(F("Celda ["));
   Serial.print(fila + 1);
   Serial.print(F(","));
   Serial.print(columna + 1);
   Serial.print(F("] -> "));
 
+
+  // Mostrar el color.
   if (color[fila][columna] == 0) {
 
     Serial.print(F("BLANCA"));
@@ -535,6 +708,8 @@ void transmitirCelda(byte fila, byte columna) {
     Serial.print(F("NEGRA"));
   }
 
+
+  // Mostrar si existe una letra.
   if (letras[fila][columna] != '\0') {
 
     Serial.print(F(" con letra "));
@@ -546,41 +721,45 @@ void transmitirCelda(byte fila, byte columna) {
     Serial.println(F(" sin letra"));
   }
 
+
   // ------------------------------------------------------------
-  // Espera antes de cada celda
+  // ESPERA ANTES DE LA CELDA
   // ------------------------------------------------------------
 
   apagarLamparas();
 
   delay(ESPERA_ANTES_CELDA);
 
+
   // ------------------------------------------------------------
-  // COLOR
+  // TRANSMITIR COLOR
   // ------------------------------------------------------------
 
   transmitirColor(color[fila][columna]);
 
+
   // ------------------------------------------------------------
-  // SI TIENE LETRA
+  // TRANSMITIR LETRA SI EXISTE
   // ------------------------------------------------------------
 
   if (letras[fila][columna] != '\0') {
 
-    // Separación entre color e indicador
+    // Separación entre color e indicador.
     delay(SEPARACION_COLOR_LETRA);
 
-    // Indicador A-B-A-B
+    // Indicar que la celda contiene una letra.
     transmitirIndicadorLetra();
 
-    // Separación antes del Morse
+    // Separación antes del código Morse.
     delay(SEPARACION_COLOR_LETRA);
 
-    // Morse
+    // Transmitir la letra utilizando Morse.
     transmitirMorse(letras[fila][columna]);
   }
 
+
   // ------------------------------------------------------------
-  // Separación entre celdas
+  // SEPARACIÓN ENTRE CELDAS
   // ------------------------------------------------------------
 
   apagarLamparas();
@@ -588,16 +767,25 @@ void transmitirCelda(byte fila, byte columna) {
   delay(SEPARACION_CELDA);
 }
 
-// ================================================================
-// TRANSMITIR SALTO DE FILA
+
+// =================================================================
+// TRANSMISIÓN DE CAMBIO DE FILA
+// =================================================================
 //
-// A+B = 6 destellos
-// ================================================================
+// El final de una fila se indica mediante:
+//
+// A+B × 6 destellos
+//
+// Cada destello tiene una duración de 200 ms y existe una pausa
+// de 200 ms entre ellos.
+// =================================================================
 
 void transmitirSaltoFila() {
 
   Serial.println(F("A+B -> SALTO DE FILA"));
 
+
+  // Generar seis destellos.
   for (byte i = 0; i < 6; i++) {
 
     digitalWrite(LAMP_A, HIGH);
@@ -611,9 +799,31 @@ void transmitirSaltoFila() {
   }
 }
 
-// ================================================================
-// TRANSMITIR MATRIZ COMPLETA
-// ================================================================
+
+// =================================================================
+// TRANSMISIÓN DE LA MATRIZ COMPLETA
+// =================================================================
+//
+// Esta función coordina todo el proceso.
+//
+// Orden:
+//
+// INICIO
+//   ↓
+// FILA 1
+//   ↓
+// CELDAS
+//   ↓
+// CAMBIO DE FILA
+//   ↓
+// FILA 2
+//   ↓
+// ...
+//   ↓
+// ÚLTIMA FILA
+//   ↓
+// FIN
+// =================================================================
 
 void transmitirMatriz() {
 
@@ -624,14 +834,16 @@ void transmitirMatriz() {
 
   apagarLamparas();
 
+
   // ------------------------------------------------------------
   // INICIO DE TRAMA
   // ------------------------------------------------------------
 
   transmitirInicioFin();
 
+
   // ------------------------------------------------------------
-  // RECORRER FILAS
+  // RECORRER TODAS LAS FILAS
   // ------------------------------------------------------------
 
   for (byte i = 0; i < filas; i++) {
@@ -641,24 +853,31 @@ void transmitirMatriz() {
     Serial.print(i + 1);
     Serial.println(F(" ********"));
 
+
+    // Recorrer todas las columnas de la fila actual.
     for (byte j = 0; j < columnas; j++) {
 
       transmitirCelda(i, j);
     }
 
+
     // ----------------------------------------------------------
-    // ESPERA ADICIONAL ANTES DEL CAMBIO DE FILA
+    // CAMBIO DE FILA
+    // ----------------------------------------------------------
+    //
+    // No se transmite el separador después de la última fila.
     // ----------------------------------------------------------
 
     if (i < filas - 1) {
 
-      // Espera adicional de 1 segundo
+      // Espera adicional antes del separador.
       delay(ESPERA_ANTES_CAMBIO_FILA);
 
-      // Señal de cambio de fila
+      // Transmitir la señal de cambio de fila.
       transmitirSaltoFila();
     }
   }
+
 
   // ------------------------------------------------------------
   // FIN DE TRAMA
@@ -668,47 +887,82 @@ void transmitirMatriz() {
 
   apagarLamparas();
 
+
+  // Mostrar mensaje de finalización.
   Serial.println();
   Serial.println(F("=============================================="));
   Serial.println(F("       TRANSMISION TERMINADA"));
   Serial.println(F("=============================================="));
 }
 
-// ================================================================
+
+// =================================================================
 // SETUP
-// ================================================================
+// =================================================================
+//
+// setup() se ejecuta una sola vez cuando el Arduino se enciende
+// o se reinicia.
+//
+// Aquí se configuran las lámparas, el puerto Serial y se solicita
+// al usuario la información de la matriz.
+// =================================================================
 
 void setup() {
 
+  // Configurar los pines de las lámparas como salidas.
   pinMode(LAMP_A, OUTPUT);
   pinMode(LAMP_B, OUTPUT);
 
+
+  // Asegurar que las lámparas comiencen apagadas.
   apagarLamparas();
 
+
+  // Iniciar comunicación Serial a 9600 baudios.
   Serial.begin(9600);
 
+
+  // Pequeña espera para permitir la inicialización.
   delay(1000);
 
+
+  // Mostrar instrucciones al usuario.
   mostrarInstrucciones();
+
+
+  // ------------------------------------------------------------
+  // INGRESAR NÚMERO DE FILAS
+  // ------------------------------------------------------------
 
   Serial.println(F("Ingrese numero de FILAS:"));
 
   filas = leerNumero();
 
+
+  // Verificar que el número de filas sea válido.
   if (filas < 1 || filas > MAX_FILAS) {
 
     Serial.println(F("ERROR: numero de filas invalido."));
 
+    // Detener el programa si el valor es incorrecto.
     while (true);
   }
 
+
   Serial.print(F("Filas = "));
   Serial.println(filas);
+
+
+  // ------------------------------------------------------------
+  // INGRESAR NÚMERO DE COLUMNAS
+  // ------------------------------------------------------------
 
   Serial.println(F("Ingrese numero de COLUMNAS:"));
 
   columnas = leerNumero();
 
+
+  // Verificar que el número de columnas sea válido.
   if (columnas < 1 || columnas > MAX_COLUMNAS) {
 
     Serial.println(F("ERROR: numero de columnas invalido."));
@@ -716,30 +970,43 @@ void setup() {
     while (true);
   }
 
+
   Serial.print(F("Columnas = "));
   Serial.println(columnas);
 
+
   // ------------------------------------------------------------
-  // INGRESAR CADA FILA
+  // INGRESAR LA MATRIZ
   // ------------------------------------------------------------
 
   for (byte i = 0; i < filas; i++) {
 
     bool filaCorrecta = false;
 
+
+    // Solicitar nuevamente la fila si contiene errores.
     while (!filaCorrecta) {
 
       Serial.println();
+
       Serial.print(F("Ingrese fila "));
       Serial.print(i + 1);
+
       Serial.print(F(" ("));
       Serial.print(columnas);
+
       Serial.println(F(" celdas):"));
 
+
+      // Leer la fila completa.
       leerLinea(buffer, sizeof(buffer));
 
+
+      // Analizar y validar la fila.
       filaCorrecta = parsearFila(i);
 
+
+      // Mostrar mensaje si existe algún error.
       if (!filaCorrecta) {
 
         Serial.println(F("ERROR en la fila."));
@@ -749,44 +1016,69 @@ void setup() {
     }
   }
 
-  // ------------------------------------------------------------
-  // MOSTRAR MATRIZ
-  // ------------------------------------------------------------
 
+  // Mostrar la matriz antes de transmitir.
   mostrarMatriz();
 
+
+  // Solicitar confirmación.
   Serial.println();
   Serial.println(F("Escriba S para transmitir."));
   Serial.println(F("Escriba N para cancelar."));
 }
 
-// ================================================================
+
+// =================================================================
 // LOOP
-// ================================================================
+// =================================================================
+//
+// loop() se ejecuta continuamente después de setup().
+//
+// El programa espera una orden del usuario:
+//
+// S → iniciar o repetir la transmisión.
+// N → cancelar/detener la transmisión.
+// =================================================================
 
 void loop() {
 
+  // Verificar si llegó información por el puerto Serial.
   if (Serial.available()) {
 
+    // Leer el carácter recibido.
     char respuesta = Serial.read();
 
-    // Convertir a mayúscula
+
+    // Convertir minúsculas a mayúsculas.
     if (respuesta >= 'a' && respuesta <= 'z') {
 
       respuesta = respuesta - 'a' + 'A';
     }
 
+
+    // ------------------------------------------------------------
+    // INICIAR TRANSMISIÓN
+    // ------------------------------------------------------------
+
     if (respuesta == 'S') {
 
       transmitirMatriz();
 
+
+      // Al finalizar, permitir transmitir nuevamente.
       Serial.println();
       Serial.println(F("Presione S para volver a transmitir."));
       Serial.println(F("Presione N para detener."));
     }
 
+
+    // ------------------------------------------------------------
+    // DETENER TRANSMISIÓN
+    // ------------------------------------------------------------
+
     else if (respuesta == 'N') {
 
+      // Apagar inmediatamente ambas lámparas.
       apagarLamparas();
 
       Serial.println();
