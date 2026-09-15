@@ -60,76 +60,56 @@ Las dos lámparas tienen funciones diferentes:
 
 # 📡 Estructura del protocolo
 
-La matriz se transmite de forma secuencial, recorriendo las celdas **de izquierda a derecha y de arriba hacia abajo**.
+La matriz se transmite **fila por fila**, recorriendo las celdas de izquierda a derecha. Cada celda transmite primero su **color** y, si corresponde, la **presencia y contenido de una letra**.
 
-La estructura general es:
+### 🔄 Secuencia general
 
-```text
-INICIO DE TRAMA
-       ↓
-   FILA 1
-       ↓
-   CELDA 1
-       ↓
-   CELDA 2
-       ↓
-      ...
-       ↓
-CAMBIO DE FILA
-       ↓
-   FILA 2
-       ↓
-      ...
-       ↓
-ÚLTIMA FILA
-       ↓
-FIN DE TRAMA
-INICIO
-A+B durante 4 s
+**Inicio**  
+`A+B → 4 s`
 
-        ↓
+→ **Celda**  
+`Espera 1 s` → `Color` → `Letra (si existe)` → `Espera 500 ms`
 
-POR CADA CELDA
+→ **Siguiente celda**
 
-Espera 1 s
-        ↓
-Color
-A+B × 1 → Blanco
-A+B × 2 → Negro
-        ↓
-Si tiene letra:
-A-B-A-B
-        ↓
-Espera 500 ms
-        ↓
-Morse
-A = ·
-B = —
-        ↓
-Espera 500 ms
-        ↓
-Siguiente celda
+→ **Fin de fila**  
+`Espera 1 s` → `A+B × 6`
 
-        ↓
+→ **Siguiente fila**
 
-FIN DE FILA
-Espera 1 s
-A+B × 6
+→ **Fin**  
+`A+B → 4 s`
 
-        ↓
+### 💡 Codificación
 
-SIGUIENTE FILA
+| Señal | Significado |
+|:---:|---|
+| `A` | Punto Morse `·` |
+| `B` | Raya Morse `—` |
+| `A+B × 1` | Blanco |
+| `A+B × 2` | Negro |
+| `A-B-A-B` | Presencia de letra |
+| `A+B × 6` | Cambio de fila |
+| `A+B durante 4 s` | Inicio / fin de trama |
 
-        ↓
+### 🧩 Funcionamiento general
 
-ÚLTIMA CELDA
+El transmisor recibe la matriz mediante el **Monitor Serial** y almacena de forma independiente el **color** y la **letra** de cada celda.
 
-        ↓
+Después, recorre la matriz **de izquierda a derecha y de arriba hacia abajo**, convirtiendo cada celda en una secuencia de señales luminosas. Si la celda contiene una letra, esta se codifica mediante **Morse**, utilizando:
 
-FIN
-A+B durante 4 s
-🚀 Estado actual
+- `A` → punto `·`
+- `B` → raya `—`
 
-El transmisor se encuentra implementado sobre Arduino Mega 2560 y permite introducir una matriz mediante el Monitor Serial para posteriormente convertirla automáticamente en una secuencia de señales ópticas.
+De esta manera, el receptor puede reconstruir tanto el **color** como el **contenido** de cada celda.
 
-El protocolo está diseñado para mantener separadas las dos variables principales de cada celda: color y contenido, permitiendo reconstruir la matriz a partir de las señales luminosas recibidas.
+## 🚀 Estado actual
+
+El transmisor está implementado en un **Arduino Mega 2560** y permite ingresar matrices dinámicamente desde el Monitor Serial.
+
+El protocolo permite representar independientemente:
+
+- ⚪ Blanca sin letra
+- ⚪ Blanca con letra
+- ⚫ Negra sin letra
+- ⚫ Negra con letra
