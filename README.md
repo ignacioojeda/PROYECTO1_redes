@@ -1,595 +1,443 @@
-# Sistema de Comunicación Óptica mediante Lámparas
+# 📡 Comunicación Óptica Inalámbrica mediante Lámparas
 
-## 📡 Descripción del proyecto
+## 📖 Descripción
 
-Este proyecto consiste en el diseño e implementación de un sistema de **comunicación óptica inalámbrica** entre dos puntos separados aproximadamente **60 metros**.
+Este proyecto desarrolla un sistema de **comunicación óptica inalámbrica** capaz de transmitir y reconstruir una matriz de información entre dos puntos separados aproximadamente **60 metros**.
 
-El sistema utiliza **dos lámparas**, denominadas **A** y **B**, controladas mediante Arduino para transmitir la información de una matriz de celdas.
+El sistema utiliza dos lámparas, identificadas como **A** y **B**, que son controladas mediante Arduino. La información de la matriz se transforma en una secuencia de señales luminosas que posteriormente son observadas y decodificadas por el sistema receptor.
 
-La matriz entregada por el profesor tendrá un tamaño determinado y estará compuesta por celdas que pueden ser:
+La matriz está compuesta por diferentes celdas y cada una de ellas puede presentar dos características independientes:
 
-- ⬜ Blancas
-- ⬛ Negras
-- Con letra
-- Sin letra
+- **Color:** blanco o negro.
+- **Contenido:** con letra o sin letra.
 
-Es importante aclarar que **el color de una celda es independiente de si esta contiene una letra**. Una celda blanca puede contener una letra, al igual que una celda negra puede contener una letra.
+Por lo tanto, una celda puede ser blanca con letra, blanca sin letra, negra con letra o negra sin letra.
 
-El receptor debe reconstruir la matriz utilizando **únicamente la información transmitida mediante las lámparas**.
+Un aspecto fundamental del protocolo es que **el color de una celda no determina si contiene una letra**. Ambas características se transmiten de manera independiente.
 
 ---
 
-# 👥 Arquitectura del sistema
+## 🎯 Objetivo
 
-El sistema estará compuesto principalmente por:
+Diseñar e implementar un protocolo de comunicación óptica que permita transmitir una matriz utilizando únicamente las señales generadas por las lámparas A y B.
 
-```text
-┌──────────────────────┐
-│      EMISOR          │
-│                      │
-│       Arduino        │
-│          │           │
-│     ┌────┴────┐      │
-│     │         │      │
-│  Lámpara A  Lámpara B│
-└─────┬─────────┬──────┘
-      │         │
-      │  ~60 m  │
-      │         │
-      ▼         ▼
-┌──────────────────────┐
-│      RECEPTOR        │
-│                      │
-│  Sensor / recepción  │
-│        óptica        │
-│          │           │
-│       Arduino        │
-│          │           │
-│          ▼           │
-│  Reconstrucción      │
-│      de matriz       │
-└──────────────────────┘
+El receptor deberá ser capaz de identificar correctamente:
 
-💡 Lámparas
+1. El inicio de la transmisión.
+2. El color de cada celda.
+3. La presencia o ausencia de una letra.
+4. La letra contenida en cada celda mediante código Morse.
+5. El cambio entre filas.
+6. El final de la transmisión.
 
-Se utilizarán dos lámparas:
-Lámpara	Función
-A	Representa un punto · en código Morse
-B	Representa una raya — en código Morse
-A + B	Se utiliza para señales de control
+A partir de esta información, el receptor deberá reconstruir la matriz original.
 
-Las lámparas A y B no representan directamente el color de una celda cuando se transmite una letra.
+---
 
-El color se determina mediante el número de destellos simultáneos de ambas lámparas.
-📦 Protocolo de comunicación
+# 💡 Principio de funcionamiento
 
-El protocolo está diseñado para que el receptor pueda identificar:
+El sistema utiliza dos fuentes luminosas con funciones diferentes.
 
-    El inicio de la matriz.
+La **lámpara A** representa un punto (`·`) del código Morse, mientras que la **lámpara B** representa una raya (`—`).
 
-    El inicio de cada celda.
+Cuando ambas lámparas se encienden simultáneamente, la señal se interpreta como una señal de control. De esta manera, A y B pueden trabajar tanto de forma individual como conjunta para transmitir diferentes tipos de información.
 
-    El color de cada celda.
+| Señal | Interpretación |
+|---|---|
+| A | Punto Morse `·` |
+| B | Raya Morse `—` |
+| A + B | Señal de control / color |
+| A → B → A → B | La celda contiene una letra |
+| A + B × 6 | Cambio de fila |
+| A + B durante 5 s | Inicio o final de trama |
 
-    Si una celda contiene una letra.
+---
 
-    La letra mediante código Morse.
+# 📡 Estructura del protocolo
 
-    El final de cada fila.
+La transmisión se realiza de forma secuencial, recorriendo la matriz **fila por fila y celda por celda**.
 
-    El final de la matriz.
+Antes de comenzar se envía una señal de inicio de trama. Posteriormente, cada celda se transmite siguiendo siempre el mismo procedimiento:
 
-La estructura general de la transmisión será:
+1. Se realiza una espera inicial de 3 segundos.
+2. Se transmite el color de la celda.
+3. Si la celda contiene una letra, se transmite el indicador `A-B-A-B`.
+4. Se espera 2 segundos.
+5. Se transmite la letra utilizando código Morse.
+6. Se espera 2 segundos antes de continuar con la siguiente celda.
 
-INICIO DE TRAMA
-      │
-      ▼
-   FILA 1
-      │
-      ├── CELDA 1
-      ├── CELDA 2
-      ├── CELDA 3
-      ├── ...
-      └── CELDA N
-      │
-      ▼
- SALTO DE FILA
-      │
-      ▼
-   FILA 2
-      │
-      ├── CELDA 1
-      ├── CELDA 2
-      ├── ...
-      └── CELDA N
-      │
-      ▼
-     ...
-      │
-      ▼
-   ÚLTIMA FILA
-      │
-      ▼
- FIN DE TRAMA
+Cuando termina una fila, se transmite una señal especial de seis destellos simultáneos de A y B para indicar el cambio a la siguiente fila.
 
-⏱️ Tiempos del protocolo
+Una vez transmitida la última celda de la matriz, se envía la señal de finalización.
 
-Los tiempos definidos inicialmente para la transmisión son los siguientes:
-Evento	Señal	Tiempo
-Inicio de trama	A + B encendidas continuamente	5 s
-Inicio de celda	Ambas lámparas apagadas	3 s
-Celda blanca	A + B → 1 destello	0,7 s ON / 0,5 s OFF
-Celda negra	A + B → 2 destellos	0,7 s ON / 0,5 s OFF
-Indicador de letra	A → B → A → B	0,4 s ON / 0,4 s OFF
-Separación color-letra	Ambas apagadas	2 s
-Punto Morse ·	Lámpara A	0,7 s ON
-Raya Morse —	Lámpara B	0,7 s ON
-Separación entre símbolos Morse	Ambas apagadas	0,5 s
-Separación entre celdas	Ambas apagadas	2 s
-Salto de fila	A + B → 6 destellos	0,4 s ON / 0,4 s OFF
-Fin de trama	A + B encendidas continuamente	5 s
+---
 
-    Nota: Los tiempos podrán ajustarse experimentalmente durante las pruebas para garantizar una correcta detección a la distancia de aproximadamente 60 metros.
+# ⏱️ Temporización
 
-🟦⬛ Codificación del color
+Los tiempos del protocolo fueron definidos buscando que las señales puedan ser diferenciadas correctamente durante la transmisión óptica.
 
-El color de cada celda se transmite mediante ambas lámparas encendidas simultáneamente.
-Celda blanca
+| Evento | Señal | Temporización |
+|---|---|---|
+| Inicio de trama | A + B encendidas | 5 s |
+| Espera antes de cada celda | A y B apagadas | 3 s |
+| Celda blanca | A + B, 1 destello | 0,7 s ON / 0,5 s OFF |
+| Celda negra | A + B, 2 destellos | 0,7 s ON / 0,5 s OFF |
+| Indicador de letra | A → B → A → B | 0,4 s ON / 0,4 s OFF |
+| Separación color-letra | A y B apagadas | 2 s |
+| Punto Morse | A | 0,7 s ON |
+| Raya Morse | B | 0,7 s ON |
+| Separación Morse | A y B apagadas | 0,5 s |
+| Separación entre celdas | A y B apagadas | 2 s |
+| Salto de fila | A + B, 6 destellos | 0,4 s ON / 0,4 s OFF |
+| Fin de trama | A + B encendidas | 5 s |
 
-Una celda blanca se representa mediante un destello simultáneo:
+Estos tiempos pueden ser ajustados durante las pruebas experimentales con el objetivo de mejorar la confiabilidad de la detección a la distancia de operación.
 
-A: ────████────
-B: ────████────
+---
 
-       1
-    DESTELLO
+# ⬜⬛ Transmisión del color
 
-Celda negra
+El color se transmite utilizando ambas lámparas simultáneamente.
 
-Una celda negra se representa mediante dos destellos simultáneos:
+Una **celda blanca** se representa mediante un único destello de A y B:
 
-A: ──████──████──
-B: ──████──████──
+> **A + B → 1 destello = BLANCO**
 
-      1     2
-   DESTELLO DESTELLO
+Una **celda negra** se representa mediante dos destellos consecutivos:
 
-Por lo tanto:
+> **A + B → 2 destellos = NEGRO**
 
-1 destello A+B → CELDA BLANCA
+Cada destello tiene una duración de 0,7 segundos encendido y 0,5 segundos apagado.
 
-2 destellos A+B → CELDA NEGRA
+Es importante destacar que esta señal únicamente representa el **color**. Después de ella todavía debe determinarse si la celda contiene o no una letra.
 
-🔤 Indicador de celda con letra
+---
 
-Después de transmitir el color, el sistema debe indicar si la celda contiene una letra.
+# 🔤 Detección de letras
 
-Para ello se utiliza una secuencia rápida:
+La presencia de una letra se transmite independientemente del color.
 
-A → B → A → B
+Cuando una celda contiene una letra, después de transmitir su color se genera una secuencia rápida de cuatro señales:
 
-Cada cambio tiene una duración de:
+> **A → B → A → B**
 
-0,4 s ON
-0,4 s OFF
+Cada pulso tiene una duración de 0,4 segundos encendido y 0,4 segundos apagado.
 
-Esta secuencia significa:
+Esta secuencia funciona como un indicador que informa al receptor:
 
-A-B-A-B → LA CELDA CONTIENE UNA LETRA
+> **"Esta celda contiene una letra."**
 
-Si esta secuencia no aparece, significa que la celda no contiene una letra.
-📖 Código Morse
+Si la secuencia `A-B-A-B` no aparece, el receptor interpreta que la celda no contiene ninguna letra y no debe intentar decodificar código Morse.
 
-Cuando una celda contiene una letra, después del indicador:
+---
 
-A-B-A-B
+# 🔠 Codificación mediante código Morse
 
-se espera:
-
-2 segundos
-
-Posteriormente se transmite la letra utilizando código Morse.
+Cuando una celda contiene una letra, se realiza una espera de 2 segundos y posteriormente se transmite la letra utilizando las lámparas A y B.
 
 La correspondencia utilizada es:
-Lámpara	Símbolo Morse
-A	Punto ·
-B	Raya —
 
-Cada símbolo tiene una duración de:
+- **A = punto (`·`)**
+- **B = raya (`—`)**
 
-0,7 segundos
+Cada símbolo tiene una duración de 0,7 segundos y los símbolos consecutivos de una misma letra se separan mediante 0,5 segundos.
 
-La separación entre símbolos Morse será:
+### Ejemplos
 
-0,5 segundos
-
-🔠 Ejemplos de letras
-Letra A
+**Letra A**
 
 Código Morse:
 
-· —
+`· —`
 
 Transmisión:
 
-A → B
+`A → B`
 
-Letra D
+---
+
+**Letra D**
 
 Código Morse:
 
-— · ·
+`— · ·`
 
 Transmisión:
 
-B → A → A
+`B → A → A`
 
-Letra G
+---
+
+**Letra G**
 
 Código Morse:
 
-— — ·
+`— — ·`
 
 Transmisión:
 
-B → B → A
+`B → B → A`
 
-Letra S
+---
+
+**Letra S**
 
 Código Morse:
 
-· · ·
+`· · ·`
 
 Transmisión:
 
-A → A → A
-
-🧩 Transmisión de una celda
-
-Cada celda seguirá la siguiente lógica:
-
-                 ┌──────────────┐
-                 │ ESPERA 3 s   │
-                 └──────┬───────┘
-                        │
-                        ▼
-                ┌───────────────┐
-                │ TRANSMITIR    │
-                │    COLOR      │
-                └───────┬───────┘
-                        │
-                        ▼
-                ¿TIENE LETRA?
-                   /       \
-                 NO         SÍ
-                 │           │
-                 │           ▼
-                 │       A-B-A-B
-                 │       rápidamente
-                 │           │
-                 │           ▼
-                 │       ESPERA 2 s
-                 │           │
-                 │           ▼
-                 │       CÓDIGO MORSE
-                 │           │
-                 └─────┬─────┘
-                       │
-                       ▼
-                  ESPERA 2 s
-                       │
-                       ▼
-                SIGUIENTE CELDA
+`A → A → A`
 
-⬜ Ejemplo: celda blanca sin letra
+---
 
-ESPERA 3 s
-    ↓
-A+B → 1 destello
-    ↓
-NO hay A-B-A-B
-    ↓
-NO se transmite Morse
-    ↓
-ESPERA 2 s
-    ↓
-SIGUIENTE CELDA
-
-⬛ Ejemplo: celda negra con letra G
-
-La letra G corresponde a:
-
-— — ·
-
-Por lo tanto:
-
-ESPERA 3 s
-    ↓
-A+B → A+B
-    ↓
-CELDA NEGRA
-    ↓
-A → B → A → B
-    ↓
-TIENE LETRA
-    ↓
-ESPERA 2 s
-    ↓
-B → B → A
-    ↓
-— — ·
-    ↓
-LETRA G
-    ↓
-ESPERA 2 s
-    ↓
-SIGUIENTE CELDA
-
-↩️ Salto de fila
-
-Cuando se hayan transmitido todas las celdas de una fila, se transmitirá una señal especial para indicar el cambio de fila.
-
-La señal será:
-
-A+B → A+B → A+B → A+B → A+B → A+B
-
-Es decir:
-
-6 destellos simultáneos
-
-Cada destello tendrá:
-
-0,4 s ON
-0,4 s OFF
-
-Por lo tanto:
-
-6 destellos A+B → SALTO DE FILA
-
-Esta señal permite diferenciar el final de una fila de las señales utilizadas para representar los colores de las celdas.
-
-    Importante: después de la última fila no se transmite un salto de fila. Después de la última celda se procede directamente a la señal de fin de trama.
-
-🚦 Inicio de trama
-
-Antes de comenzar a transmitir la matriz, ambas lámparas se mantienen encendidas simultáneamente durante:
-
-5 segundos
-
-Esto representa:
-
-A + B
-████████████████████
-       5 segundos
-
-→ INICIO DE TRAMA
-
-El receptor utiliza esta señal para comenzar una nueva reconstrucción de la matriz.
-🛑 Fin de trama
-
-Una vez transmitida la última celda de la matriz, ambas lámparas se mantienen encendidas simultáneamente durante:
-
-5 segundos
-
-Esto representa:
-
-A + B
-████████████████████
-       5 segundos
-
-→ FIN DE TRAMA
-
-El receptor interpreta esta señal como el final de la transmisión y procede a finalizar la reconstrucción de la matriz.
-📋 Estructura completa de una transmisión
-
-Una transmisión completa tendrá la siguiente estructura:
-
-┌────────────────────────────┐
-│      INICIO DE TRAMA       │
-│          A+B / 5 s         │
-└──────────────┬─────────────┘
-               │
-               ▼
-       ┌───────────────┐
-       │    FILA 1     │
-       └───────┬───────┘
-               │
-       ┌───────▼───────┐
-       │    CELDA 1    │
-       └───────┬───────┘
-               │
-             2 s
-               │
-               ▼
-       ┌───────────────┐
-       │    CELDA 2    │
-       └───────┬───────┘
-               │
-              ...
-               │
-               ▼
-       ┌───────────────┐
-       │    CELDA N    │
-       └───────┬───────┘
-               │
-               ▼
-       A+B × 6 DESTELLOS
-               │
-               ▼
-       ┌───────────────┐
-       │    FILA 2     │
-       └───────────────┘
-               │
-              ...
-               │
-               ▼
-       ┌───────────────┐
-       │  ÚLTIMA FILA   │
-       └───────┬───────┘
-               │
-               ▼
-       ÚLTIMA CELDA
-               │
-               ▼
-       A+B / 5 segundos
-               │
-               ▼
-       ┌───────────────┐
-       │ FIN DE TRAMA  │
-       └───────────────┘
-
-🔄 Proceso de reconstrucción
-
-El receptor observará las señales ópticas y seguirá el siguiente proceso:
-
-1. Detectar A+B durante 5 s
-             ↓
-2. Iniciar recepción
-             ↓
-3. Esperar 3 s
-             ↓
-4. Determinar color
-             ↓
-5. Determinar si existe letra
-             ↓
-6. Si existe letra:
-       └── recibir Morse
-             ↓
-7. Guardar información de la celda
-             ↓
-8. Esperar 2 s
-             ↓
-9. ¿Se detectaron 6 destellos A+B?
-       │
-       ├── NO → siguiente celda
-       │
-       └── SÍ → siguiente fila
-             ↓
-10. ¿Se detectaron A+B durante 5 s?
-       │
-       └── SÍ → FIN DE TRAMA
-             ↓
-11. Mostrar matriz reconstruida
+# 🧩 Ejemplos de transmisión
 
-🧠 Principio de funcionamiento
+## Celda blanca sin letra
 
-El sistema utiliza diferentes patrones de iluminación para representar diferentes tipos de información.
+La secuencia correspondiente es:
 
-A+B durante 5 s
-       ↓
-INICIO / FIN DE TRAMA
+**Espera 3 s → A+B durante un destello → espera 2 s → siguiente celda.**
 
-A+B × 1
-       ↓
-CELDA BLANCA
+En este caso no aparece la secuencia `A-B-A-B`, por lo que el receptor sabe que la celda es blanca y no contiene ninguna letra.
 
-A+B × 2
-       ↓
-CELDA NEGRA
+---
 
-A-B-A-B rápido
-       ↓
-CELDA CON LETRA
+## Celda negra con letra G
 
-A
-       ↓
-PUNTO (·)
+Para una celda negra que contiene la letra **G**, la transmisión sería:
 
-B
-       ↓
-RAYA (—)
+**Espera 3 s → A+B, dos destellos → A-B-A-B → espera 2 s → B-B-A → espera 2 s.**
 
-A+B × 6 rápido
-       ↓
-SALTO DE FILA
+El receptor interpreta esta secuencia como:
 
-De esta manera, el receptor puede determinar la información de cada celda sin tener acceso a la matriz original.
-👁️ Consideraciones sobre la velocidad de transmisión
+> **Celda negra + contiene una letra + letra G.**
 
-Debido a que la transmisión se realiza mediante señales ópticas y se busca que el receptor pueda identificar visualmente los patrones de las lámparas, se utilizarán tiempos suficientemente largos para permitir una correcta percepción de los pulsos.
+---
 
-Los tiempos iniciales establecidos son:
+# ↩️ Cambio de fila
 
-    0,4 s para pulsos rápidos de control.
+Al finalizar todas las celdas de una fila, se transmite una señal especial para indicar que la siguiente señal corresponde a una nueva fila.
 
-    0,5 s para separación entre símbolos Morse.
+La señal está formada por **seis destellos simultáneos de A y B**:
 
-    0,7 s para los símbolos y pulsos principales.
+`A+B → A+B → A+B → A+B → A+B → A+B`
 
-    1 s para separar determinadas etapas de la transmisión.
+Cada destello tiene una duración de 0,4 segundos encendido y 0,4 segundos apagado.
 
-    2 s para separación entre celdas.
+El receptor reconoce esta secuencia como:
 
-    3 s para preparación antes de cada celda.
+> **Fin de fila / inicio de la siguiente fila.**
 
-    5 s para inicio y fin de trama.
+Esta señal no se transmite después de la última fila.
 
-Estos valores podrán ser modificados durante las pruebas experimentales para encontrar el mejor equilibrio entre:
+---
 
-Velocidad de transmisión ↔ facilidad de detección ↔ confiabilidad
-🎯 Objetivo final
+# 🚦 Inicio de la transmisión
 
-El objetivo del sistema es lograr que una matriz proporcionada al Arduino emisor pueda ser transmitida mediante señales luminosas a través de las lámparas y posteriormente reconstruida por el receptor.
+Antes de comenzar a transmitir la matriz, ambas lámparas permanecen encendidas simultáneamente durante **5 segundos**.
 
-El receptor deberá obtener exclusivamente a partir de las señales ópticas:
+Esta señal permite al receptor identificar el comienzo de una nueva trama.
 
-    La posición de cada celda.
+La misma señal se utiliza al final de la transmisión. La diferencia se determina mediante el estado del receptor:
 
-    El color de cada celda.
+- Si el sistema todavía no está transmitiendo una matriz, A+B durante 5 segundos significa **inicio de trama**.
+- Si ya se está transmitiendo una matriz, A+B durante 5 segundos significa **fin de trama**.
 
-    La presencia o ausencia de una letra.
+---
 
-    La letra correspondiente cuando exista.
+# 🛑 Final de la transmisión
 
-    El cambio entre filas.
+Después de transmitir la última celda de la última fila, ambas lámparas permanecen encendidas durante 5 segundos.
 
-    El inicio y final de la transmisión.
+Esta señal indica que la matriz ha sido transmitida completamente.
 
-Finalmente, la matriz reconstruida deberá corresponder a la matriz original proporcionada al emisor.
-📌 Resumen del protocolo
+El receptor utiliza esta señal para finalizar el proceso de adquisición y mostrar o almacenar la matriz reconstruida.
 
-INICIO
-A+B durante 5 s
+---
 
-PARA CADA CELDA:
+# 🔄 Proceso de reconstrucción
 
-    Esperar 3 s
+El receptor debe analizar las señales luminosas en el mismo orden en que fueron transmitidas.
 
-    Si BLANCA:
-        A+B × 1
+Primero detecta la señal de inicio y comienza a recibir la matriz. Para cada celda, identifica inicialmente su color mediante el número de destellos simultáneos de A y B.
 
-    Si NEGRA:
-        A+B × 2
+Después verifica si aparece la secuencia `A-B-A-B`.
 
-    Si tiene LETRA:
-        A-B-A-B rápido
-        Esperar 2 s
-        Transmitir Morse
-            A = ·
-            B = —
+Si aparece, la celda contiene una letra y el receptor espera 2 segundos para recibir el código Morse correspondiente.
 
-    Esperar 2 s
+Si no aparece, la celda se registra simplemente como una celda sin letra.
 
-AL TERMINAR CADA FILA:
-    A+B × 6 rápido
+Una vez procesada la celda, el receptor continúa con la siguiente. Cuando detecta seis destellos simultáneos de A y B, incrementa el número de fila y continúa con la siguiente fila.
 
-EXCEPTO DESPUÉS DE LA ÚLTIMA FILA
+Finalmente, cuando detecta A+B encendidas durante 5 segundos estando dentro de una transmisión, considera que la matriz ha sido recibida completamente.
 
-FIN
-A+B durante 5 s
+---
 
-🛠️ Tecnologías previstas
+# 🧠 Lógica de interpretación
 
-    Arduino
+La información de cada celda puede representarse conceptualmente como:
 
-    Lámpara A
+| Color | Indicador | Morse | Resultado |
+|---|---|---|---|
+| Blanco | No | — | ⬜ Sin letra |
+| Blanco | Sí | Código Morse | ⬜ Con letra |
+| Negro | No | — | ⬛ Sin letra |
+| Negro | Sí | Código Morse | ⬛ Con letra |
 
-    Lámpara B
+Por lo tanto, el receptor no debe asumir que un determinado color implica necesariamente la existencia de una letra.
 
-    Sistema de recepción óptica
+La información de **color** y **contenido** se obtiene mediante dos etapas diferentes del protocolo.
 
-    Comunicación inalámbrica mediante luz
+---
 
-    Código Morse
+# 📐 Secuencia general
 
-    Procesamiento y reconstrucción de matrices
+La transmisión completa sigue la siguiente estructura:
+
+**Inicio de trama**
+
+↓  
+
+**Fila 1**
+
+↓  
+
+**Celda 1**
+
+↓  
+
+**Celda 2**
+
+↓  
+
+**...**
+
+↓  
+
+**Última celda de la fila**
+
+↓  
+
+**Señal de salto de fila**
+
+↓  
+
+**Fila siguiente**
+
+↓  
+
+**...**
+
+↓  
+
+**Última fila**
+
+↓  
+
+**Última celda**
+
+↓  
+
+**Fin de trama**
+
+---
+
+# ⚙️ Implementación
+
+El sistema puede implementarse mediante una lógica secuencial o una máquina de estados que permita controlar cada etapa del protocolo.
+
+Una posible organización de estados es:
+
+- `IDLE`
+- `START`
+- `WAIT_CELL`
+- `SEND_COLOR`
+- `CHECK_LETTER`
+- `LETTER_FLAG`
+- `WAIT_MORSE`
+- `SEND_MORSE`
+- `CELL_SEPARATOR`
+- `ROW_SEPARATOR`
+- `END`
+
+La implementación deberá garantizar que cada señal se genere con los tiempos establecidos y que el receptor pueda diferenciar entre las diferentes secuencias.
+
+---
+
+# 🧪 Pruebas experimentales
+
+Antes de realizar la transmisión a la distancia máxima, se recomienda verificar cada parte del protocolo de forma independiente.
+
+Las pruebas pueden realizarse progresivamente:
+
+1. Verificar el funcionamiento individual de las lámparas A y B.
+2. Comprobar la transmisión simultánea A+B.
+3. Verificar la detección de uno y dos destellos.
+4. Comprobar la secuencia A-B-A-B.
+5. Verificar la transmisión de diferentes letras en Morse.
+6. Comprobar los seis destellos correspondientes al cambio de fila.
+7. Verificar correctamente el inicio y el final de la trama.
+8. Realizar pruebas con matrices pequeñas.
+9. Incrementar progresivamente la distancia.
+10. Realizar la transmisión completa a aproximadamente 60 metros.
+
+Los tiempos establecidos inicialmente podrán modificarse si las condiciones de iluminación, distancia o características de los sensores afectan la detección.
+
+---
+
+# 📊 Ejemplo conceptual
+
+Para una matriz de ejemplo:
+
+| | | | |
+|---|---|---|---|
+| ⬜ A | ⬛ | ⬜ | ⬛ D |
+| ⬛ | ⬜ G | ⬛ | ⬜ |
+| ⬜ S | ⬛ | ⬛ A | ⬜ |
+
+el sistema no transmite directamente la imagen de la matriz.
+
+En su lugar, transforma cada celda en una secuencia de señales luminosas.
+
+Por ejemplo:
+
+> **⬜ A**
+
+se transforma en:
+
+`A+B × 1 → A-B-A-B → A-B`
+
+Mientras que:
+
+> **⬛**
+
+se transforma en:
+
+`A+B × 2`
+
+De esta manera, el receptor puede reconstruir tanto el color como el contenido de cada posición.
+
+---
+
+# 📡 Diagrama general del sistema
+
+```text
+              TRANSMISIÓN ÓPTICA
+                    ~60 m
+
+┌─────────────────┐                       ┌─────────────────┐
+│      EMISOR     │                       │     RECEPTOR    │
+│                 │                       │                 │
+│     Arduino     │                       │     Arduino     │
+│        │        │                       │        ▲        │
+│    ┌───┴───┐    │                       │        │        │
+│    │       │    │                       │   Sensores /   │
+│    ▼       ▼    │                       │    recepción    │
+│  Lámpara  Lámpara│ ───────────────────► │                 │
+│     A       B   │                       │   Decodificación│
+│                 │                       │        │        │
+└─────────────────┘                       │        ▼        │
+                                          │ Matriz final   │
+                                          └─────────────────┘
