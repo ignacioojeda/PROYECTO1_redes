@@ -113,3 +113,48 @@ El protocolo permite representar independientemente:
 - ⚪ Blanca con letra
 - ⚫ Negra sin letra
 - ⚫ Negra con letra
+
+- ## 🔤 Tabla de código Morse
+
+El protocolo utiliza código Morse para transmitir las letras. La **Lámpara A representa un punto (`·`)** y la **Lámpara B representa una raya (`—`)**.
+
+| Letra | Morse | Secuencia de lámparas |
+|:---:|:---:|:---:|
+| A | `· —` | A B |
+| B | `— · · ·` | B A A A |
+| C | `— · — ·` | B A B A |
+| D | `— · ·` | B A A |
+| E | `·` | A |
+| F | `· · — ·` | A A B A |
+| G | `— — ·` | B B A |
+| H | `· · · ·` | A A A A |
+| I | `· ·` | A A |
+| J | `· — — —` | A B B B |
+| K | `— · —` | B A B |
+| L | `· — · ·` | A B A A |
+| M | `— —` | B B |
+| N | `— ·` | B A |
+| O | `— — —` | B B B |
+| P | `· — — ·` | A B B A |
+| Q | `— — · —` | B B A B |
+| R | `· — ·` | A B A |
+| S | `· · ·` | A A A |
+| T | `—` | B |
+| U | `· · —` | A A B |
+| V | `· · · —` | A A A B |
+| W | `· — —` | A B B |
+| X | `— · · —` | B A A B |
+| Y | `— · — —` | B A B B |
+| Z | `— — · ·` | B B A A |
+
+### Ejemplo
+
+Para transmitir la letra **G**:
+
+`G → — — · → B B A`
+
+Por lo tanto, el transmisor enciende:
+
+**Lámpara B → Lámpara B → Lámpara A**
+
+Cada símbolo permanece encendido durante **300 ms**, con una separación de **200 ms** entre símbolos.
